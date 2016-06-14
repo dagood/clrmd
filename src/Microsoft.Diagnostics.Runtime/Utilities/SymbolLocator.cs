@@ -36,6 +36,10 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
         public int Timeout { get; set; } = 60000;
 
         /// <summary>
+        /// </summary>
+        public bool SkipDownload { get; set; }
+
+        /// <summary>
         /// A set of pdbs that we did not find when requested.  This set is SymbolLocator specific (not global
         /// like successful downloads) and is cleared when we change the symbol path or cache.
         /// </summary>
@@ -510,6 +514,10 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
                     {
                         Trace($"Server '{element.Target}' did not have file '{Path.GetFileName(fileName)}' with timestamp={buildTimeStamp:x} and filesize={imageSize:x}.");
                     }
+                    else if (SkipDownload)
+                    {
+                        return target;
+                    }
                     else if (ValidateBinary(target, buildTimeStamp, imageSize, checkProperties))
                     {
                         Trace($"Found '{fileName}' on server '{element.Target}'.  Copied to '{target}'.");
@@ -559,7 +567,10 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
                 try
                 {
                     // Decompress it
-                    Command.Run("Expand " + Command.Quote(compressedFilePath) + " " + Command.Quote(targetPath));
+                    if (!SkipDownload)
+                    {
+                        Command.Run("Expand " + Command.Quote(compressedFilePath) + " " + Command.Quote(targetPath));
+                    }
                     return targetPath;
                 }
                 catch (Exception e)
@@ -592,11 +603,14 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
 
             if (!filePtrData.StartsWith("MSG:") && File.Exists(filePtrData))
             {
-                using (FileStream fs = File.OpenRead(filePtrData))
+                if (!SkipDownload)
                 {
-                    CopyStreamToFile(fs, filePtrData, targetPath, fs.Length);
-                    return targetPath;
+                    using (FileStream fs = File.OpenRead(filePtrData))
+                    {
+                        CopyStreamToFile(fs, filePtrData, targetPath, fs.Length);
+                    }
                 }
+                return targetPath;
             }
             else
             {
@@ -632,7 +646,10 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
                             return reader.ReadToEnd();
                         }
 
-                        CopyStreamToFile(fromStream, fullUri, fullDestPath, response.ContentLength);
+                        if (!SkipDownload)
+                        {
+                            CopyStreamToFile(fromStream, fullUri, fullDestPath, response.ContentLength);
+                        }
                         return fullDestPath;
                     }
                 }
@@ -791,7 +808,7 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
     {
         private Dictionary<string, PEFile> _pefileCache = new Dictionary<string, PEFile>(StringComparer.OrdinalIgnoreCase);
         private DataTarget _dataTarget;
-        
+
         public FileLoader(DataTarget dt)
         {
             _dataTarget = dt;
